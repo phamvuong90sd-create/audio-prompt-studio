@@ -29,6 +29,7 @@
     "appId": "com.flowauto.audio.prompt.studio",
     "productName": "Audio Prompt Studio",
     "asar": true,
+    "publish": null,
     "files": ["dist/**/*", "electron/**/*", "package.json"],
     "win": {"target": [{"target": "nsis", "arch": ["x64"]}], "artifactName": "AudioPromptStudio-Setup.exe"},
     "nsis": {"oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "Audio Prompt Studio"},
