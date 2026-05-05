@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawnSync } = require('child_process');
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+const installerFfmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
 const isDev = !app.isPackaged;
 const BASE = path.join(os.homedir(), '.audio-prompt-studio');
@@ -23,6 +23,19 @@ ipcMain.handle('dialog:openFile', async (_e, opts={}) => {
 });
 ipcMain.handle('config:load', async()=>{ try { return { ok:true, ...JSON.parse(fs.readFileSync(CFG,'utf8')) }; } catch { return { ok:true }; } });
 ipcMain.handle('config:save', async(_e,p)=>{ ensure(); fs.writeFileSync(CFG, JSON.stringify(p||{}, null, 2)); return { ok:true }; });
+function ffmpegBin(){
+  const platformDir = process.platform === 'win32' ? 'win32-x64' : process.platform === 'darwin' ? 'darwin-x64' : 'linux-x64';
+  const exeName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+  const candidates = [
+    installerFfmpegPath,
+    installerFfmpegPath.replace('app.asar', 'app.asar.unpacked'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', platformDir, exeName),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'ffmpeg', exeName),
+  ];
+  for (const c of candidates) { try { if (c && fs.existsSync(c)) return c; } catch {} }
+  return installerFfmpegPath;
+}
+function runFfmpeg(args){ return spawnSync(ffmpegBin(), args, { encoding:'utf8', windowsHide:true }); }
 function mime(f){ const e=String(f).toLowerCase().split('.').pop(); if(e==='wav')return 'audio/wav'; if(e==='m4a')return 'audio/mp4'; return 'audio/mpeg'; }
 function parseKeys(input){ return String(input||'').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean); }
 async function gemini(apiKeys, parts, system, json=false, startIndex=0){
@@ -42,11 +55,24 @@ async function gemini(apiKeys, parts, system, json=false, startIndex=0){
   throw new Error(last || 'gemini_failed');
 }
 function splitAudio(file, seconds){
-  ensure(); const dir=path.join(OUT,'chunks_'+Date.now()); fs.mkdirSync(dir,{recursive:true});
-  const pattern=path.join(dir,'chunk_%03d.mp3');
-  const r=spawnSync(ffmpegPath, ['-y','-i',file,'-f','segment','-segment_time',String(seconds||30),'-c:a','libmp3lame',pattern], {encoding:'utf8', windowsHide:true});
-  if(r.status!==0) throw new Error(r.stderr || 'ffmpeg_split_failed');
-  return fs.readdirSync(dir).filter(x=>x.endsWith('.mp3')).map(x=>path.join(dir,x));
+  ensure();
+  const dir = path.join(OUT, 'chunks_' + Date.now());
+  fs.mkdirSync(dir, { recursive:true });
+  const ext = String(file).toLowerCase().endsWith('.wav') ? 'wav' : String(file).toLowerCase().endsWith('.m4a') ? 'm4a' : 'mp3';
+  let pattern = path.join(dir, `chunk_%03d.${ext}`);
+  let r = runFfmpeg(['-y','-i',file,'-f','segment','-segment_time',String(seconds||30),'-reset_timestamps','1','-c','copy',pattern]);
+  let files = fs.readdirSync(dir).filter(x => x.startsWith('chunk_')).map(x => path.join(dir, x));
+  if (r.status !== 0 || !files.length) {
+    pattern = path.join(dir, 'chunk_%03d.mp3');
+    r = runFfmpeg(['-y','-i',file,'-f','segment','-segment_time',String(seconds||30),'-reset_timestamps','1','-vn','-ar','44100','-ac','2','-b:a','128k',pattern]);
+    files = fs.readdirSync(dir).filter(x => x.startsWith('chunk_') && x.endsWith('.mp3')).map(x => path.join(dir, x));
+  }
+  if (r.status !== 0 || !files.length) {
+    const log = path.join(OUT, 'ffmpeg-split-error-' + Date.now() + '.log');
+    fs.writeFileSync(log, `ffmpeg=${ffmpegBin()}\nstatus=${r.status}\nstdout=${r.stdout||''}\nstderr=${r.stderr||''}`, 'utf8');
+    throw new Error('ffmpeg_split_failed: ' + log);
+  }
+  return files.sort();
 }
 ipcMain.handle('audio:process', async(_e,p={})=>{
   try{
