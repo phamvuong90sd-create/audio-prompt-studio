@@ -77,7 +77,14 @@ function splitAudio(file, seconds){
 ipcMain.handle('audio:process', async(_e,p={})=>{
   try{
     ensure(); if(!parseKeys(p.apiKeys||p.apiKey).length) return {ok:false,error:'missing_api_key'}; if(!p.audioFile) return {ok:false,error:'missing_audio'};
-    const chunks=splitAudio(p.audioFile, Number(p.chunkSeconds||30));
+    let chunks=[];
+    let splitWarning='';
+    try {
+      chunks=splitAudio(p.audioFile, Number(p.chunkSeconds||30));
+    } catch (splitErr) {
+      splitWarning=String(splitErr.message||splitErr);
+      chunks=[p.audioFile];
+    }
     const transcripts=[];
     for(let i=0;i<chunks.length;i++){
       const data=fs.readFileSync(chunks[i]).toString('base64');
@@ -91,6 +98,6 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
     let arr; try { arr=JSON.parse(out.replace(/^```json\s*|```$/g,'')); } catch { arr=[out]; }
     const resultFile=path.join(OUT,'audio-prompts-'+Date.now()+'.json'); fs.writeFileSync(resultFile, JSON.stringify(arr,null,2), 'utf8');
     const transcriptFile=path.join(OUT,'transcript-'+Date.now()+'.txt'); fs.writeFileSync(transcriptFile, raw, 'utf8');
-    return {ok:true,count:Array.isArray(arr)?arr.length:1,prompts:arr,resultFile,transcriptFile};
+    return {ok:true,count:Array.isArray(arr)?arr.length:1,prompts:arr,resultFile,transcriptFile,splitWarning};
   }catch(e){ return {ok:false,error:String(e.message||e)}; }
 });
