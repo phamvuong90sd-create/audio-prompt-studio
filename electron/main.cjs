@@ -24,8 +24,11 @@ ipcMain.handle('dialog:openFile', async (_e, opts={}) => {
 ipcMain.handle('config:load', async()=>{ try { return { ok:true, ...JSON.parse(fs.readFileSync(CFG,'utf8')) }; } catch { return { ok:true }; } });
 ipcMain.handle('config:save', async(_e,p)=>{ ensure(); fs.writeFileSync(CFG, JSON.stringify(p||{}, null, 2)); return { ok:true }; });
 function mime(f){ const e=String(f).toLowerCase().split('.').pop(); if(e==='wav')return 'audio/wav'; if(e==='m4a')return 'audio/mp4'; return 'audio/mpeg'; }
-async function gemini(apiKey, parts, system, json=false){
+function parseKeys(input){ return String(input||'').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean); }
+async function gemini(apiKeys, parts, system, json=false, startIndex=0){
+  const keys=parseKeys(apiKeys); if(!keys.length) throw new Error('missing_api_key');
   const models=['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash']; let last='';
+  for(let k=0;k<keys.length;k++){ const apiKey=keys[(startIndex+k)%keys.length];
   for(const m of models){
     try{
       const body={ contents:[{role:'user',parts}], systemInstruction:{parts:[{text:system}]}, generationConfig:{temperature:.55} };
@@ -35,7 +38,7 @@ async function gemini(apiKey, parts, system, json=false){
       if(!r.ok){ last=o.error?.message || `http_${r.status}`; continue; }
       return (o.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('\n').trim();
     }catch(e){ last=String(e); }
-  }
+  }}
   throw new Error(last || 'gemini_failed');
 }
 function splitAudio(file, seconds){
@@ -47,18 +50,18 @@ function splitAudio(file, seconds){
 }
 ipcMain.handle('audio:process', async(_e,p={})=>{
   try{
-    ensure(); if(!p.apiKey) return {ok:false,error:'missing_api_key'}; if(!p.audioFile) return {ok:false,error:'missing_audio'};
+    ensure(); if(!parseKeys(p.apiKeys||p.apiKey).length) return {ok:false,error:'missing_api_key'}; if(!p.audioFile) return {ok:false,error:'missing_audio'};
     const chunks=splitAudio(p.audioFile, Number(p.chunkSeconds||30));
     const transcripts=[];
     for(let i=0;i<chunks.length;i++){
       const data=fs.readFileSync(chunks[i]).toString('base64');
-      const t=await gemini(p.apiKey, [{inlineData:{mimeType:mime(chunks[i]),data}}, {text:`Transcribe this Vietnamese audio chunk ${i+1}/${chunks.length}. Return clean text only.`}], 'Bạn là hệ thống nhận dạng giọng nói tiếng Việt. Chỉ trả văn bản đã nghe được, không giải thích.', false);
+      const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(chunks[i]),data}}, {text:`Transcribe this Vietnamese audio chunk ${i+1}/${chunks.length}. Return clean text only.`}], 'Bạn là hệ thống nhận dạng giọng nói tiếng Việt. Chỉ trả văn bản đã nghe được, không giải thích.', false, i);
       transcripts.push(t);
     }
     const raw=transcripts.join('\n');
     const sys=`Bạn là chuyên gia chuyển audio/kịch bản thành prompt tạo video. Đầu ra phải là JSON array các scene string. Mỗi scene đúng format: Scene 01 – Title | Character1: full description | Character2: full description | Style: ... | Character voices: ... | Camera: ... | Setting: ... | Mood: ... | Audio cues: ... | Dialog: ... | Subtitles: ... . Style JSON người dùng cung cấp phải được tôn trọng. Lời thoại: ${p.dialog?'có':'không'}. Phụ đề: ${p.subtitles?'có':'không'}. Yêu cầu thêm của người dùng phải được áp dụng vào mọi prompt nếu có. So sánh transcript với văn bản gốc nếu có, chỉnh transcript cho khớp nội dung gốc, rồi tạo prompt đúng nội dung văn bản gốc.`;
     const prompt=`STYLE JSON:\n${p.styleJson||''}\n\nVĂN BẢN GỐC:\n${p.originalText||''}\n\nYÊU CẦU THÊM VÀO PROMPT:\n${p.extraRequirement||''}\n\nTRANSCRIPT TỪ AUDIO:\n${raw}\n\nHãy tạo prompt cuối cùng đúng theo nội dung gốc.`;
-    const out=await gemini(p.apiKey, [{text:prompt}], sys, true);
+    const out=await gemini(p.apiKeys||p.apiKey, [{text:prompt}], sys, true, chunks.length);
     let arr; try { arr=JSON.parse(out.replace(/^```json\s*|```$/g,'')); } catch { arr=[out]; }
     const resultFile=path.join(OUT,'audio-prompts-'+Date.now()+'.json'); fs.writeFileSync(resultFile, JSON.stringify(arr,null,2), 'utf8');
     const transcriptFile=path.join(OUT,'transcript-'+Date.now()+'.txt'); fs.writeFileSync(transcriptFile, raw, 'utf8');
