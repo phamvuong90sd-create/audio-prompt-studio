@@ -40,7 +40,7 @@ function mime(f){ const e=String(f).toLowerCase().split('.').pop(); if(e==='wav'
 function parseKeys(input){ return String(input||'').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean); }
 async function gemini(apiKeys, parts, system, json=false, startIndex=0){
   const keys=parseKeys(apiKeys); if(!keys.length) throw new Error('missing_api_key');
-  const models=['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash']; let last='';
+  const models=['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash','gemini-2.0-flash-lite']; let last='';
   for(let k=0;k<keys.length;k++){ const apiKey=keys[(startIndex+k)%keys.length];
   for(const m of models){
     try{
