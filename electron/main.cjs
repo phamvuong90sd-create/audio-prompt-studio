@@ -54,6 +54,22 @@ async function gemini(apiKeys, parts, system, json=false, startIndex=0){
   }}
   throw new Error(last || 'gemini_failed');
 }
+
+function mediaDurationSeconds(file){
+  try{
+    const r=runFfmpeg(['-hide_banner','-i',file]);
+    const text=(r.stderr||'')+'\n'+(r.stdout||'');
+    const m=text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if(!m) return 0;
+    return Number(m[1])*3600 + Number(m[2])*60 + Number(m[3]);
+  }catch{return 0;}
+}
+function promptCountFromDuration(file, seconds){
+  const duration=mediaDurationSeconds(file);
+  const cut=Math.max(1, Number(seconds||8)||8);
+  return {durationSeconds:duration, cutSeconds:cut, promptCount:duration?Math.ceil(duration/cut):0};
+}
+
 function splitAudio(file, seconds){
   ensure();
   const dir = path.join(OUT, 'chunks_' + Date.now());
@@ -74,9 +90,12 @@ function splitAudio(file, seconds){
   }
   return files.sort();
 }
+ipcMain.handle('audio:info', async(_e,p={})=>{ try{ if(!p.file)return {ok:false,error:'missing_file'}; return {ok:true,...promptCountFromDuration(p.file,p.chunkSeconds)}; }catch(e){ return {ok:false,error:String(e.message||e)}; } });
+
 ipcMain.handle('audio:process', async(_e,p={})=>{
   try{
     ensure(); if(!parseKeys(p.apiKeys||p.apiKey).length) return {ok:false,error:'missing_api_key'}; if(!p.audioFile) return {ok:false,error:'missing_audio'};
+    const autoCountInfo=promptCountFromDuration(p.audioFile, Number(p.chunkSeconds||8));
     let chunks=[];
     let splitWarning='';
     try {
@@ -92,7 +111,7 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
       transcripts.push(t);
     }
     const raw=transcripts.join('\n');
-    const desiredCount=Math.max(1, Number(p.targetPromptCount||chunks.length)||chunks.length);
+    const desiredCount=Math.max(1, Number(p.targetPromptCount||autoCountInfo.promptCount||chunks.length)||chunks.length);
     const sys=`You are a professional video prompt engineer. Your output MUST be a JSON array containing EXACTLY ${desiredCount} scene strings. ALL output text, including titles, descriptions, labels, camera notes, dialog notes, and subtitle notes, MUST be in ENGLISH only. Create exactly ${desiredCount} prompts/scenes. Do not create fewer or more. Each scene must strictly follow this format: Scene 01 – Title | Character1: full description | Character2: full description | Style: ... | Character voices: ... | Camera: ... | Setting: ... | Mood: ... | Audio cues: ... | Dialog: ... | Subtitles: ... . Preserve the SAME SYSTEM, storyline, structure, characters, scene order, events, meaning, and emotional intent from the original text. Do not invent a different story. Do not change the topic, character roles, sequence of events, or core message. If the original text is Vietnamese, translate the meaning faithfully into natural English prompts. Respect the user Style JSON. Dialog enabled: ${p.dialog?'yes':'no'}. Subtitles enabled: ${p.subtitles?'yes':'no'}. Apply extra prompt requirements if provided, but never override the original content. Compare the transcript with the original text if provided, fix the transcript to match the original content, then generate final English prompts that stay faithful to the original text.`;
     const prompt=`STYLE JSON:\n${p.styleJson||''}\n\nORIGINAL TEXT:\n${p.originalText||''}\n\nEXTRA PROMPT REQUIREMENTS:\n${p.extraRequirement||''}\n\nAUDIO TRANSCRIPT:\n${raw}\n\nGenerate final prompts in ENGLISH only, but preserve the same system, storyline, scene order, meaning, characters, and emotional intent as the original text. Do not rewrite into a different concept.`;
     const out=await gemini(p.apiKeys||p.apiKey, [{text:prompt}], sys, true, chunks.length);
@@ -102,6 +121,6 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
     while(arr.length<desiredCount){ arr.push(`Scene ${String(arr.length+1).padStart(2,'0')} – Continuation | Character1: based on the original text | Character2: based on the original text | Style: follow the provided style JSON | Character voices: match the original audio | Camera: cinematic continuation | Setting: continue from the original story | Mood: consistent with the original text | Audio cues: continue the narration | Dialog: ${p.dialog?'include if present in original':'none'} | Subtitles: ${p.subtitles?'English subtitles matching the narration':'none'}`); }
     const resultFile=path.join(OUT,'audio-prompts-'+Date.now()+'.json'); fs.writeFileSync(resultFile, JSON.stringify(arr,null,2), 'utf8');
     const transcriptFile=path.join(OUT,'transcript-'+Date.now()+'.txt'); fs.writeFileSync(transcriptFile, raw, 'utf8');
-    return {ok:true,count:Array.isArray(arr)?arr.length:1,prompts:arr,resultFile,transcriptFile,splitWarning};
+    return {ok:true,count:Array.isArray(arr)?arr.length:1,prompts:arr,resultFile,transcriptFile,splitWarning,durationSeconds:autoCountInfo.durationSeconds,cutSeconds:autoCountInfo.cutSeconds,autoPromptCount:autoCountInfo.promptCount};
   }catch(e){ return {ok:false,error:String(e.message||e)}; }
 });
