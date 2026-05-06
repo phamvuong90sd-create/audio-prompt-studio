@@ -90,6 +90,27 @@ function splitAudio(file, seconds){
   }
   return files.sort();
 }
+
+function normalizePromptArray(parsed){
+  if (Array.isArray(parsed)) return parsed.map(x => typeof x === 'string' ? x : JSON.stringify(x));
+  if (parsed && Array.isArray(parsed.scenes)) return parsed.scenes.map(x => typeof x === 'string' ? x : (x.prompt || JSON.stringify(x)));
+  if (parsed && Array.isArray(parsed.prompts)) return parsed.prompts.map(x => typeof x === 'string' ? x : JSON.stringify(x));
+  if (parsed && typeof parsed === 'object') return [parsed.prompt || parsed.text || JSON.stringify(parsed)];
+  return [String(parsed || '')];
+}
+function splitLongPromptText(text, count, dialog, subtitles){
+  const clean=String(text||'').replace(/\s+/g,' ').trim();
+  const parts=[];
+  if(!clean) return parts;
+  const sentences=clean.match(/[^.!?]+[.!?]*/g)||[clean];
+  const per=Math.max(1, Math.ceil(sentences.length/count));
+  for(let i=0;i<count;i++){
+    const chunk=sentences.slice(i*per,(i+1)*per).join(' ').trim() || clean;
+    parts.push(`Scene ${String(i+1).padStart(2,'0')} – Story Beat | Character1: based on the original text | Character2: based on the original text | Style: follow the provided style JSON | Character voices: match the original audio | Camera: cinematic shot for this beat | Setting: faithful to the original story | Mood: consistent with this moment | Audio cues: match the narration | Dialog: ${dialog?'include if present in original':'none'} | Subtitles: ${subtitles?'English subtitles matching the narration':'none'} | Content: ${chunk}`);
+  }
+  return parts;
+}
+
 ipcMain.handle('audio:info', async(_e,p={})=>{ try{ if(!p.file)return {ok:false,error:'missing_file'}; return {ok:true,...promptCountFromDuration(p.file,p.chunkSeconds)}; }catch(e){ return {ok:false,error:String(e.message||e)}; } });
 
 ipcMain.handle('audio:process', async(_e,p={})=>{
@@ -115,10 +136,15 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
     const sys=`You are a professional video prompt engineer. Your output MUST be a JSON array containing EXACTLY ${desiredCount} scene strings. ALL output text, including titles, descriptions, labels, camera notes, dialog notes, and subtitle notes, MUST be in ENGLISH only. Create exactly ${desiredCount} prompts/scenes. Do not create fewer or more. Each scene must strictly follow this format: Scene 01 – Title | Character1: full description | Character2: full description | Style: ... | Character voices: ... | Camera: ... | Setting: ... | Mood: ... | Audio cues: ... | Dialog: ... | Subtitles: ... . Preserve the SAME SYSTEM, storyline, structure, characters, scene order, events, meaning, and emotional intent from the original text. Do not invent a different story. Do not change the topic, character roles, sequence of events, or core message. If the original text is Vietnamese, translate the meaning faithfully into natural English prompts. Respect the user Style JSON. Dialog enabled: ${p.dialog?'yes':'no'}. Subtitles enabled: ${p.subtitles?'yes':'no'}. Apply extra prompt requirements if provided, but never override the original content. Compare the transcript with the original text if provided, fix the transcript to match the original content, then generate final English prompts that stay faithful to the original text.`;
     const prompt=`STYLE JSON:\n${p.styleJson||''}\n\nORIGINAL TEXT:\n${p.originalText||''}\n\nEXTRA PROMPT REQUIREMENTS:\n${p.extraRequirement||''}\n\nAUDIO TRANSCRIPT:\n${raw}\n\nGenerate final prompts in ENGLISH only, but preserve the same system, storyline, scene order, meaning, characters, and emotional intent as the original text. Do not rewrite into a different concept.`;
     const out=await gemini(p.apiKeys||p.apiKey, [{text:prompt}], sys, true, chunks.length);
-    let arr; try { arr=JSON.parse(out.replace(/^```json\s*|```$/g,'')); } catch { arr=[out]; }
-    if(!Array.isArray(arr)) arr=[String(arr)];
+    let parsed; try { parsed=JSON.parse(out.replace(/^```json\s*|```$/g,'')); } catch { parsed=out; }
+    let arr=normalizePromptArray(parsed).filter(Boolean);
+    if(arr.length===1 && desiredCount>1) arr=splitLongPromptText(arr[0], desiredCount, p.dialog, p.subtitles);
     if(arr.length>desiredCount) arr=arr.slice(0,desiredCount);
-    while(arr.length<desiredCount){ arr.push(`Scene ${String(arr.length+1).padStart(2,'0')} – Continuation | Character1: based on the original text | Character2: based on the original text | Style: follow the provided style JSON | Character voices: match the original audio | Camera: cinematic continuation | Setting: continue from the original story | Mood: consistent with the original text | Audio cues: continue the narration | Dialog: ${p.dialog?'include if present in original':'none'} | Subtitles: ${p.subtitles?'English subtitles matching the narration':'none'}`); }
+    while(arr.length<desiredCount){
+      const source=raw || p.originalText || 'the original story';
+      arr.push(...splitLongPromptText(source, desiredCount-arr.length, p.dialog, p.subtitles));
+      if(arr.length>desiredCount) arr=arr.slice(0,desiredCount);
+    }
     const resultFile=path.join(OUT,'audio-prompts-'+Date.now()+'.json'); fs.writeFileSync(resultFile, JSON.stringify(arr,null,2), 'utf8');
     const transcriptFile=path.join(OUT,'transcript-'+Date.now()+'.txt'); fs.writeFileSync(transcriptFile, raw, 'utf8');
     return {ok:true,count:Array.isArray(arr)?arr.length:1,prompts:arr,resultFile,transcriptFile,splitWarning,durationSeconds:autoCountInfo.durationSeconds,cutSeconds:autoCountInfo.cutSeconds,autoPromptCount:autoCountInfo.promptCount};
