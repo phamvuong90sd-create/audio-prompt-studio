@@ -40,7 +40,7 @@ function mime(f){ const e=String(f).toLowerCase().split('.').pop(); if(e==='wav'
 function parseKeys(input){ return String(input||'').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean); }
 async function gemini(apiKeys, parts, system, json=false, startIndex=0){
   const keys=parseKeys(apiKeys); if(!keys.length) throw new Error('missing_api_key');
-  const models=['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash','gemini-2.0-flash-lite']; let last='';
+  const models=['gemini-2.5-flash','gemini-2.0-flash']; let last='';
   for(let k=0;k<keys.length;k++){ const apiKey=keys[(startIndex+k)%keys.length];
   for(const m of models){
     try{
@@ -48,7 +48,7 @@ async function gemini(apiKeys, parts, system, json=false, startIndex=0){
       if(json) body.generationConfig.responseMimeType='application/json';
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
       const o=await r.json().catch(()=>({}));
-      if(!r.ok){ last=o.error?.message || `http_${r.status}`; continue; }
+      if(!r.ok){ const msg=o.error?.message || `http_${r.status}`; if(msg.includes('Quota exceeded') || msg.includes('quota')){ last='quota_exceeded: API key/model quota exceeded. Add another Gemini API key or wait for quota reset.'; continue; } last=msg; continue; }
       return (o.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('\n').trim();
     }catch(e){ last=String(e); }
   }}
