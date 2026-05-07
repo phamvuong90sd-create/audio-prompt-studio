@@ -120,12 +120,29 @@ function splitAudio(file, seconds){
   return files.sort();
 }
 
+function objectToPromptText(x){
+  if (!x) return '';
+  if (typeof x === 'string') return x;
+  if (x.prompt) return String(x.prompt);
+  const parts=[];
+  if (x.sceneNumber) parts.push(`Scene ${String(x.sceneNumber).padStart(2,'0')}`);
+  if (x.title) parts.push(`Title: ${x.title}`);
+  if (x.description) parts.push(`Description: ${x.description}`);
+  for (const [k,v] of Object.entries(x)) {
+    if (['sceneNumber','title','description','prompt'].includes(k)) continue;
+    if (v !== undefined && v !== null && typeof v !== 'object') parts.push(`${k}: ${v}`);
+  }
+  return parts.join(' | ');
+}
+function cleanPromptText(t){ return String(t||'').replace(/[{}]/g,'').replace(/\s+/g,' ').trim(); }
 function normalizePromptArray(parsed){
-  if (Array.isArray(parsed)) return parsed.map(x => typeof x === 'string' ? x : JSON.stringify(x));
-  if (parsed && Array.isArray(parsed.scenes)) return parsed.scenes.map(x => typeof x === 'string' ? x : (x.prompt || JSON.stringify(x)));
-  if (parsed && Array.isArray(parsed.prompts)) return parsed.prompts.map(x => typeof x === 'string' ? x : JSON.stringify(x));
-  if (parsed && typeof parsed === 'object') return [parsed.prompt || parsed.text || JSON.stringify(parsed)];
-  return [String(parsed || '')];
+  let arr=[];
+  if (Array.isArray(parsed)) arr=parsed.map(objectToPromptText);
+  else if (parsed && Array.isArray(parsed.scenes)) arr=parsed.scenes.map(objectToPromptText);
+  else if (parsed && Array.isArray(parsed.prompts)) arr=parsed.prompts.map(objectToPromptText);
+  else if (parsed && typeof parsed === 'object') arr=[objectToPromptText(parsed)];
+  else arr=[String(parsed || '')];
+  return arr.map(cleanPromptText).filter(Boolean);
 }
 function splitLongPromptText(text, count, dialog, subtitles){
   const clean=String(text||'').replace(/\s+/g,' ').trim();
@@ -175,7 +192,8 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
       arr.push(...splitLongPromptText(source, desiredCount-arr.length, p.dialog, p.subtitles));
       if(arr.length>desiredCount) arr=arr.slice(0,desiredCount);
     }
-    const resultFile=path.join(OUT,'audio-prompts-'+Date.now()+'.json'); fs.writeFileSync(resultFile, JSON.stringify(arr,null,2), 'utf8');
+    const resultFile=path.join(OUT,'audio-prompts-'+Date.now()+'.json'); arr=arr.map(cleanPromptText);
+    fs.writeFileSync(resultFile, JSON.stringify(arr,null,2), 'utf8');
     const transcriptFile=path.join(OUT,'transcript-'+Date.now()+'.txt'); fs.writeFileSync(transcriptFile, raw, 'utf8');
     return {ok:true,count:Array.isArray(arr)?arr.length:1,prompts:arr,resultFile,transcriptFile,splitWarning,durationSeconds:autoCountInfo.durationSeconds,cutSeconds:autoCountInfo.cutSeconds,autoPromptCount:autoCountInfo.promptCount};
   }catch(e){ return {ok:false,error:String(e.message||e)}; }
