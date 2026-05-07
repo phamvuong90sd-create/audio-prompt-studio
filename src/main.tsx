@@ -26,7 +26,7 @@ function App() {
   const [styleJson, setStyleJson] = useState('');
   const [audioFile, setAudioFile] = useState('');
   const [chunkSeconds, setChunkSeconds] = useState('8');
-  const [targetPromptCount: promptCount, setTargetPromptCount] = useState('');
+  const [targetPromptCount, setTargetPromptCount] = useState('');
   const [originalText, setOriginalText] = useState('');
   const [extraRequirement, setExtraRequirement] = useState('');
   const [dialog, setDialog] = useState(false);
@@ -79,7 +79,7 @@ function App() {
       styleJson,
       audioFile,
       chunkSeconds,
-      targetPromptCount: promptCount,
+      targetPromptCount,
       originalText,
       extraRequirement,
       dialog,
