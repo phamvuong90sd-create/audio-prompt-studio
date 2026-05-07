@@ -26,7 +26,7 @@ function App() {
   const [styleJson, setStyleJson] = useState('');
   const [audioFile, setAudioFile] = useState('');
   const [chunkSeconds, setChunkSeconds] = useState('8');
-  const [targetPromptCount] = useState('');
+  const [targetPromptCount: promptCount, setTargetPromptCount] = useState('');
   const [originalText, setOriginalText] = useState('');
   const [extraRequirement, setExtraRequirement] = useState('');
   const [dialog, setDialog] = useState(false);
@@ -45,7 +45,7 @@ function App() {
   async function refreshInfo(file = audioFile, seconds = chunkSeconds) {
     if (!file) return;
     const info = await api().info({ file, chunkSeconds: seconds });
-    if (info?.ok) setAutoInfo(info);
+    if (info?.ok) { setAutoInfo(info); if (info.promptCount) setTargetPromptCount(String(info.promptCount)); }
   }
 
   async function pickAudio() {
@@ -65,13 +65,21 @@ function App() {
   }
 
   async function run() {
-    setStatus('Đang cắt audio, nhận dạng văn bản và tạo prompt...');
+    setStatus('Đang phân tích thời lượng, cắt audio, nhận dạng văn bản và tạo prompt...');
+    let promptCount = targetPromptCount;
+    if (!promptCount && audioFile) {
+      const info = await api().info({ file: audioFile, chunkSeconds });
+      if (info?.ok) {
+        setAutoInfo(info);
+        if (info.promptCount) { promptCount = String(info.promptCount); setTargetPromptCount(promptCount); }
+      }
+    }
     const r = await api().process({
       apiKeys: apiKey,
       styleJson,
       audioFile,
       chunkSeconds,
-      targetPromptCount,
+      targetPromptCount: promptCount,
       originalText,
       extraRequirement,
       dialog,
