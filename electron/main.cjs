@@ -26,11 +26,13 @@ ipcMain.handle('config:save', async(_e,p)=>{ ensure(); fs.writeFileSync(CFG, JSO
 function ffmpegBin(){
   const platformDir = process.platform === 'win32' ? 'win32-x64' : process.platform === 'darwin' ? 'darwin-x64' : 'linux-x64';
   const exeName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+  const unpackedInstaller = installerFfmpegPath.replace('app.asar', 'app.asar.unpacked');
   const candidates = [
-    installerFfmpegPath,
-    installerFfmpegPath.replace('app.asar', 'app.asar.unpacked'),
+    unpackedInstaller,
     path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', platformDir, exeName),
     path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'ffmpeg', exeName),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'ffmpeg', platformDir, exeName),
+    installerFfmpegPath,
   ];
   for (const c of candidates) { try { if (c && fs.existsSync(c)) return c; } catch {} }
   return installerFfmpegPath;
