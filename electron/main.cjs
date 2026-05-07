@@ -55,14 +55,43 @@ async function gemini(apiKeys, parts, system, json=false, startIndex=0){
   throw new Error(last || 'gemini_failed');
 }
 
+
+function mp3DurationFallback(file){
+  try{
+    const buf=fs.readFileSync(file);
+    let off=0;
+    if(buf.length>10 && buf.toString('ascii',0,3)==='ID3'){
+      off=10 + ((buf[6]&0x7f)<<21) + ((buf[7]&0x7f)<<14) + ((buf[8]&0x7f)<<7) + (buf[9]&0x7f);
+    }
+    const bitrates={
+      'V1L1':[0,32,64,96,128,160,192,224,256,288,320,352,384,416,448],
+      'V1L2':[0,32,48,56,64,80,96,112,128,160,192,224,256,320,384],
+      'V1L3':[0,32,40,48,56,64,80,96,112,128,160,192,224,256,320],
+      'V2L1':[0,32,48,56,64,80,96,112,128,144,160,176,192,224,256],
+      'V2L2':[0,8,16,24,32,40,48,56,64,80,96,112,128,144,160],
+      'V2L3':[0,8,16,24,32,40,48,56,64,80,96,112,128,144,160]
+    };
+    for(let i=off;i<Math.min(buf.length-4,off+200000);i++){
+      if(buf[i]===0xff && (buf[i+1]&0xe0)===0xe0){
+        const verBits=(buf[i+1]>>3)&3; const layerBits=(buf[i+1]>>1)&3; const brIdx=(buf[i+2]>>4)&15;
+        const ver=verBits===3?'V1':(verBits===2||verBits===0?'V2':''); const layer=layerBits===3?'L1':layerBits===2?'L2':layerBits===1?'L3':'';
+        const kbps=(bitrates[ver+layer]||[])[brIdx]||0;
+        if(kbps>0){ return Math.max(1, Math.round((buf.length-i)*8/(kbps*1000))); }
+      }
+    }
+  }catch{}
+  return 0;
+}
+
 function mediaDurationSeconds(file){
   try{
     const r=runFfmpeg(['-hide_banner','-i',file]);
     const text=(r.stderr||'')+'\n'+(r.stdout||'');
     const m=text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
-    if(!m) return 0;
-    return Number(m[1])*3600 + Number(m[2])*60 + Number(m[3]);
-  }catch{return 0;}
+    if(m) return Number(m[1])*3600 + Number(m[2])*60 + Number(m[3]);
+  }catch{}
+  if(String(file).toLowerCase().endsWith('.mp3')) return mp3DurationFallback(file);
+  return 0;
 }
 function promptCountFromDuration(file, seconds){
   const duration=mediaDurationSeconds(file);
