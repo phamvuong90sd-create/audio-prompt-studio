@@ -111,7 +111,7 @@ function vendorWhisperDir(){
 function findWhisperExe(){
   const dir=vendorWhisperDir();
   const names=process.platform==='win32' ? ['whisper-cli.exe','main.exe','whisper.exe'] : ['whisper-cli','main','whisper'];
-  const nested=[dir, path.join(dir,'Release'), path.join(dir,'bin')];
+  const nested=[path.join(dir,'Release'), path.join(dir,'bin'), dir];
   for(const d of nested) for(const n of names){ const f=path.join(d,n); try{ if(fs.existsSync(f)) return f; }catch{} }
   return names[0];
 }
@@ -143,7 +143,7 @@ function localWhisperTranscribe(file){
   const wav=prepareWhisperWav(file);
   const prefix=path.join(OUT, 'whisper-' + Date.now());
   const args=['-m', model, '-f', wav, '-otxt', '-of', prefix, '-l', 'auto', '-tr'];
-  const r=spawnSync(exe, args, { encoding:'utf8', windowsHide:true, timeout: 30*60*1000 });
+  const r=spawnSync(exe, args, { encoding:'utf8', windowsHide:true, timeout: 30*60*1000, cwd:path.dirname(exe), env:{...process.env, PATH:path.dirname(exe)+path.delimiter+(process.env.PATH||'')} });
   const txtFile=prefix + '.txt';
   if(r.status!==0 || !fs.existsSync(txtFile)){
     const detail=(r.error ? String(r.error.message||r.error)+' | ' : '') + (r.signal ? 'signal_'+r.signal+' | ' : '') + (r.stderr||r.stdout||('exit_'+r.status));

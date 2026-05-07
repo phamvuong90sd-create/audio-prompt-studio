@@ -20,6 +20,7 @@ jobs:
           $exe = Get-ChildItem vendor/whisper -Recurse -Filter whisper-cli.exe | Select-Object -First 1
           if (-not $exe) { $exe = Get-ChildItem vendor/whisper -Recurse -Filter main.exe | Select-Object -First 1 }
           if (-not $exe) { throw 'whisper cli exe not found in release asset' }
+          Copy-Item (Join-Path $exe.Directory.FullName '*') vendor/whisper -Recurse -Force
           Copy-Item $exe.FullName vendor/whisper/whisper-cli.exe -Force
           Invoke-WebRequest https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin -OutFile vendor/whisper/models/ggml-base.bin
       - run: npm run dist -- --publish never
