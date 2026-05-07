@@ -95,10 +95,36 @@ function mediaDurationSeconds(file){
   return 0;
 }
 
-function localWhisperTranscribe(file, opts={}){
-  const exe=String(opts.whisperExe||'').trim() || 'whisper-cli';
-  const model=String(opts.whisperModel||'').trim();
-  if(!model) throw new Error('missing_whisper_model');
+function vendorWhisperDir(){
+  const candidates=[
+    path.join(process.resourcesPath || '', 'vendor', 'whisper'),
+    path.join(__dirname, '..', 'vendor', 'whisper'),
+    path.join(process.cwd(), 'vendor', 'whisper'),
+  ];
+  for(const c of candidates){ try{ if(c && fs.existsSync(c)) return c; }catch{} }
+  return candidates[0];
+}
+function findWhisperExe(){
+  const dir=vendorWhisperDir();
+  const names=process.platform==='win32' ? ['whisper-cli.exe','main.exe','whisper.exe'] : ['whisper-cli','main','whisper'];
+  const nested=[dir, path.join(dir,'Release'), path.join(dir,'bin')];
+  for(const d of nested) for(const n of names){ const f=path.join(d,n); try{ if(fs.existsSync(f)) return f; }catch{} }
+  return names[0];
+}
+function findWhisperModel(){
+  const dir=vendorWhisperDir();
+  const candidates=[
+    path.join(dir,'models','ggml-small.bin'),
+    path.join(dir,'models','ggml-base.bin'),
+    path.join(dir,'ggml-small.bin'),
+    path.join(dir,'ggml-base.bin'),
+  ];
+  for(const c of candidates){ try{ if(fs.existsSync(c)) return c; }catch{} }
+  throw new Error('missing_bundled_whisper_model');
+}
+function localWhisperTranscribe(file){
+  const exe=findWhisperExe();
+  const model=findWhisperModel();
   const prefix=path.join(OUT, 'whisper-' + Date.now());
   const args=['-m', model, '-f', file, '-otxt', '-of', prefix, '-l', 'auto', '-tr'];
   const r=spawnSync(exe, args, { encoding:'utf8', windowsHide:true, timeout: 30*60*1000 });
@@ -190,7 +216,7 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
     const transcripts=[];
     const mode=String(p.transcriptionMode||'gemini');
     if(mode==='localWhisper'){
-      const t=localWhisperTranscribe(p.audioFile, p);
+      const t=localWhisperTranscribe(p.audioFile);
       transcripts.push(t);
       splitWarning = splitWarning ? splitWarning + ' | local_whisper_used' : 'local_whisper_used';
     }else{

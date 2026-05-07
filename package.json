@@ -30,11 +30,11 @@
     "productName": "Audio Prompt Studio",
     "asar": true,
     "publish": null,
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "files": ["dist/**/*", "electron/**/*", "vendor/whisper/**/*", "package.json"],
     "win": {"target": [{"target": "nsis", "arch": ["x64"]}], "artifactName": "AudioPromptStudio-Setup.exe"},
     "nsis": {"oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "Audio Prompt Studio"},
     "mac": {"target": [{"target": "dmg", "arch": ["universal"]}], "artifactName": "AudioPromptStudio-macOS.dmg"},
     "linux": {"target": [{"target": "AppImage", "arch": ["x64"]}], "artifactName": "AudioPromptStudio-Linux.AppImage"},
-    "asarUnpack": ["node_modules/@ffmpeg-installer/**"]
+    "asarUnpack": ["node_modules/@ffmpeg-installer/**", "vendor/whisper/**"]
   }
 }
