@@ -49,7 +49,7 @@ async function gemini(apiKeys, parts, system, json=false, startIndex=0){
       if(json) body.generationConfig.responseMimeType='application/json';
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
       const o=await r.json().catch(()=>({}));
-      if(!r.ok){ const msg=o.error?.message || `http_${r.status}`; if(msg.includes('Quota exceeded') || msg.includes('quota')){ const retry=o.error?.details?.flatMap(d=>d.retryDelay?[d.retryDelay]:[])?.[0]; if(retry && keys.length===1){ const sec=Number(String(retry).replace('s',''))||0; if(sec>0 && sec<=65) await waitMs((sec+1)*1000); } last='quota_exceeded: API key/model quota exceeded. Add another Gemini API key or wait for quota reset.'; continue; } last=msg; continue; }
+      if(!r.ok){ const msg=o.error?.message || `http_${r.status}`; if(msg.includes('Quota exceeded') || msg.includes('quota')){ const retry=o.error?.details?.flatMap(d=>d.retryDelay?[d.retryDelay]:[])?.[0]; if(retry && keys.length===1){ const sec=Number(String(retry).replace('s',''))||0; if(sec>0 && sec<=65) await waitMs((sec+1)*1000); } last='quota_exceeded: API key/model quota exceeded. Add another Gemini API key, wait for quota reset, or paste Văn bản gốc so the app can skip audio transcription and use fewer requests.'; continue; } last=msg; continue; }
       return (o.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('\n').trim();
     }catch(e){ last=String(e); }
   }}
@@ -173,16 +173,21 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
       chunks=[p.audioFile];
     }
     const transcripts=[];
-    try{
-      const data=fs.readFileSync(p.audioFile).toString('base64');
-      const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(p.audioFile),data}}, {text:'Transcribe this full Vietnamese audio file. Return clean text only.'}], 'Bạn là hệ thống nhận dạng giọng nói tiếng Việt. Chỉ trả văn bản đã nghe được, không giải thích.', false, 0);
-      transcripts.push(t);
-    }catch(fullErr){
-      splitWarning = splitWarning ? splitWarning + ' | full_audio_transcribe_failed: ' + String(fullErr.message||fullErr) : 'full_audio_transcribe_failed: ' + String(fullErr.message||fullErr);
-      for(let i=0;i<chunks.length;i++){
-        const data=fs.readFileSync(chunks[i]).toString('base64');
-        const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(chunks[i]),data}}, {text:`Transcribe this Vietnamese audio chunk ${i+1}/${chunks.length}. Return clean text only.`}], 'Bạn là hệ thống nhận dạng giọng nói tiếng Việt. Chỉ trả văn bản đã nghe được, không giải thích.', false, i);
+    if(String(p.originalText||'').trim()){
+      transcripts.push(String(p.originalText||'').trim());
+      splitWarning = splitWarning ? splitWarning + ' | skipped_transcription_using_original_text' : 'skipped_transcription_using_original_text';
+    }else{
+      try{
+        const data=fs.readFileSync(p.audioFile).toString('base64');
+        const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(p.audioFile),data}}, {text:'Transcribe this full Vietnamese audio file. Return clean text only.'}], 'Bạn là hệ thống nhận dạng giọng nói tiếng Việt. Chỉ trả văn bản đã nghe được, không giải thích.', false, 0);
         transcripts.push(t);
+      }catch(fullErr){
+        splitWarning = splitWarning ? splitWarning + ' | full_audio_transcribe_failed: ' + String(fullErr.message||fullErr) : 'full_audio_transcribe_failed: ' + String(fullErr.message||fullErr);
+        for(let i=0;i<chunks.length;i++){
+          const data=fs.readFileSync(chunks[i]).toString('base64');
+          const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(chunks[i]),data}}, {text:`Transcribe this Vietnamese audio chunk ${i+1}/${chunks.length}. Return clean text only.`}], 'Bạn là hệ thống nhận dạng giọng nói tiếng Việt. Chỉ trả văn bản đã nghe được, không giải thích.', false, i);
+          transcripts.push(t);
+        }
       }
     }
     const raw=transcripts.join('\n');
