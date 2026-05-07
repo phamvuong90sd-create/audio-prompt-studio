@@ -22,7 +22,7 @@ jobs:
           if (-not $exe) { throw 'whisper cli exe not found in release asset' }
           Copy-Item (Join-Path $exe.Directory.FullName '*') vendor/whisper -Recurse -Force
           Copy-Item $exe.FullName vendor/whisper/whisper-cli.exe -Force
-          Invoke-WebRequest https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin -OutFile vendor/whisper/models/ggml-base.bin
+          Invoke-WebRequest https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin -OutFile vendor/whisper/models/ggml-tiny.bin
       - run: npm run dist -- --publish never
       - uses: actions/upload-artifact@v4
         with:

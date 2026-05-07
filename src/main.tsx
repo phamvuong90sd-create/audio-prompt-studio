@@ -115,7 +115,7 @@ function App() {
             </Field>
             <Field label="Chế độ dịch audio">
               <select value={transcriptionMode} onChange={e => setTranscriptionMode(e.target.value)}>
-                <option value="localWhisper">Local Whisper tích hợp - ít tốn quota</option>
+                <option value="localWhisper">Local Whisper nhanh - ít tốn quota</option>
                 <option value="gemini">Gemini Audio - nhanh nhưng tốn quota</option>
               </select>
             </Field>            <Field label="Cắt audio mỗi giây">

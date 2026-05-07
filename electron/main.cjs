@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { spawnSync } = require('child_process');
+const { spawnSync, spawn } = require('child_process');
 const installerFfmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
 const isDev = !app.isPackaged;
@@ -118,10 +118,12 @@ function findWhisperExe(){
 function findWhisperModel(){
   const dir=vendorWhisperDir();
   const candidates=[
-    path.join(dir,'models','ggml-small.bin'),
+    path.join(dir,'models','ggml-tiny.bin'),
     path.join(dir,'models','ggml-base.bin'),
-    path.join(dir,'ggml-small.bin'),
+    path.join(dir,'models','ggml-small.bin'),
+    path.join(dir,'ggml-tiny.bin'),
     path.join(dir,'ggml-base.bin'),
+    path.join(dir,'ggml-small.bin'),
   ];
   for(const c of candidates){ try{ if(fs.existsSync(c)) return c; }catch{} }
   throw new Error('missing_bundled_whisper_model');
@@ -137,13 +139,24 @@ function prepareWhisperWav(file){
   }
   return wav;
 }
-function localWhisperTranscribe(file){
+function runProcessAsync(cmd,args,opts={}){
+  return new Promise((resolve)=>{
+    let stdout='', stderr='';
+    const child=spawn(cmd,args,{...opts, windowsHide:true});
+    child.stdout?.on('data',d=>{ stdout+=String(d); });
+    child.stderr?.on('data',d=>{ stderr+=String(d); });
+    child.on('error',error=>resolve({status:null,error,stdout,stderr}));
+    child.on('close',(status,signal)=>resolve({status,signal,stdout,stderr}));
+  });
+}
+async function localWhisperTranscribe(file){
   const exe=findWhisperExe();
   const model=findWhisperModel();
   const wav=prepareWhisperWav(file);
   const prefix=path.join(OUT, 'whisper-' + Date.now());
-  const args=['-m', model, '-f', wav, '-otxt', '-of', prefix, '-l', 'auto', '-tr'];
-  const r=spawnSync(exe, args, { encoding:'utf8', windowsHide:true, timeout: 30*60*1000, cwd:path.dirname(exe), env:{...process.env, PATH:path.dirname(exe)+path.delimiter+(process.env.PATH||'')} });
+  const threads=Math.max(1, Math.min(8, (os.cpus()?.length||4)-1));
+  const args=['-m', model, '-f', wav, '-otxt', '-of', prefix, '-l', 'auto', '-tr', '-t', String(threads)];
+  const r=await runProcessAsync(exe, args, { cwd:path.dirname(exe), env:{...process.env, PATH:path.dirname(exe)+path.delimiter+(process.env.PATH||'')} });
   const txtFile=prefix + '.txt';
   if(r.status!==0 || !fs.existsSync(txtFile)){
     const detail=(r.error ? String(r.error.message||r.error)+' | ' : '') + (r.signal ? 'signal_'+r.signal+' | ' : '') + (r.stderr||r.stdout||('exit_'+r.status));
@@ -233,7 +246,7 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
     const transcripts=[];
     const mode=String(p.transcriptionMode||'gemini');
     if(mode==='localWhisper'){
-      const t=localWhisperTranscribe(p.audioFile);
+      const t=await localWhisperTranscribe(p.audioFile);
       transcripts.push(t);
       splitWarning = splitWarning ? splitWarning + ' | local_whisper_used' : 'local_whisper_used';
     }else{
