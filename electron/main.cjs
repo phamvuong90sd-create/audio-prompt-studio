@@ -38,6 +38,7 @@ function ffmpegBin(){
 function runFfmpeg(args){ return spawnSync(ffmpegBin(), args, { encoding:'utf8', windowsHide:true }); }
 function mime(f){ const e=String(f).toLowerCase().split('.').pop(); if(e==='wav')return 'audio/wav'; if(e==='m4a')return 'audio/mp4'; return 'audio/mpeg'; }
 function parseKeys(input){ return String(input||'').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean); }
+function waitMs(ms){ return new Promise(r=>setTimeout(r,ms)); }
 async function gemini(apiKeys, parts, system, json=false, startIndex=0){
   const keys=parseKeys(apiKeys); if(!keys.length) throw new Error('missing_api_key');
   const models=['gemini-2.5-flash','gemini-2.0-flash']; let last='';
@@ -48,7 +49,7 @@ async function gemini(apiKeys, parts, system, json=false, startIndex=0){
       if(json) body.generationConfig.responseMimeType='application/json';
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
       const o=await r.json().catch(()=>({}));
-      if(!r.ok){ const msg=o.error?.message || `http_${r.status}`; if(msg.includes('Quota exceeded') || msg.includes('quota')){ last='quota_exceeded: API key/model quota exceeded. Add another Gemini API key or wait for quota reset.'; continue; } last=msg; continue; }
+      if(!r.ok){ const msg=o.error?.message || `http_${r.status}`; if(msg.includes('Quota exceeded') || msg.includes('quota')){ const retry=o.error?.details?.flatMap(d=>d.retryDelay?[d.retryDelay]:[])?.[0]; if(retry && keys.length===1){ const sec=Number(String(retry).replace('s',''))||0; if(sec>0 && sec<=65) await waitMs((sec+1)*1000); } last='quota_exceeded: API key/model quota exceeded. Add another Gemini API key or wait for quota reset.'; continue; } last=msg; continue; }
       return (o.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('\n').trim();
     }catch(e){ last=String(e); }
   }}
@@ -172,10 +173,17 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
       chunks=[p.audioFile];
     }
     const transcripts=[];
-    for(let i=0;i<chunks.length;i++){
-      const data=fs.readFileSync(chunks[i]).toString('base64');
-      const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(chunks[i]),data}}, {text:`Transcribe this Vietnamese audio chunk ${i+1}/${chunks.length}. Return clean text only.`}], 'Bạn là hệ thống nhận dạng giọng nói tiếng Việt. Chỉ trả văn bản đã nghe được, không giải thích.', false, i);
+    try{
+      const data=fs.readFileSync(p.audioFile).toString('base64');
+      const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(p.audioFile),data}}, {text:'Transcribe this full Vietnamese audio file. Return clean text only.'}], 'Bạn là hệ thống nhận dạng giọng nói tiếng Việt. Chỉ trả văn bản đã nghe được, không giải thích.', false, 0);
       transcripts.push(t);
+    }catch(fullErr){
+      splitWarning = splitWarning ? splitWarning + ' | full_audio_transcribe_failed: ' + String(fullErr.message||fullErr) : 'full_audio_transcribe_failed: ' + String(fullErr.message||fullErr);
+      for(let i=0;i<chunks.length;i++){
+        const data=fs.readFileSync(chunks[i]).toString('base64');
+        const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(chunks[i]),data}}, {text:`Transcribe this Vietnamese audio chunk ${i+1}/${chunks.length}. Return clean text only.`}], 'Bạn là hệ thống nhận dạng giọng nói tiếng Việt. Chỉ trả văn bản đã nghe được, không giải thích.', false, i);
+        transcripts.push(t);
+      }
     }
     const raw=transcripts.join('\n');
     const desiredCount=Math.max(1, Number(p.targetPromptCount||autoCountInfo.promptCount||chunks.length)||chunks.length);
