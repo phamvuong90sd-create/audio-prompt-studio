@@ -98,7 +98,9 @@ function mediaDurationSeconds(file){
 function vendorWhisperDir(){
   const candidates=[
     path.join(process.resourcesPath || '', 'vendor', 'whisper'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'vendor', 'whisper'),
     path.join(__dirname, '..', 'vendor', 'whisper'),
+    path.join(__dirname, '..', 'app.asar.unpacked', 'vendor', 'whisper'),
     path.join(process.cwd(), 'vendor', 'whisper'),
   ];
   for(const c of candidates){ try{ if(c && fs.existsSync(c)) return c; }catch{} }
@@ -122,15 +124,25 @@ function findWhisperModel(){
   for(const c of candidates){ try{ if(fs.existsSync(c)) return c; }catch{} }
   throw new Error('missing_bundled_whisper_model');
 }
+function prepareWhisperWav(file){
+  const wav=path.join(OUT, 'whisper-input-' + Date.now() + '.wav');
+  const r=runFfmpeg(['-y','-i',file,'-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',wav]);
+  if(r.status!==0 || !fs.existsSync(wav)){
+    throw new Error('whisper_wav_convert_failed: ' + (r.stderr||r.stdout||('exit_'+r.status)).slice(0,1200));
+  }
+  return wav;
+}
 function localWhisperTranscribe(file){
   const exe=findWhisperExe();
   const model=findWhisperModel();
+  const wav=prepareWhisperWav(file);
   const prefix=path.join(OUT, 'whisper-' + Date.now());
-  const args=['-m', model, '-f', file, '-otxt', '-of', prefix, '-l', 'auto', '-tr'];
+  const args=['-m', model, '-f', wav, '-otxt', '-of', prefix, '-l', 'auto', '-tr'];
   const r=spawnSync(exe, args, { encoding:'utf8', windowsHide:true, timeout: 30*60*1000 });
   const txtFile=prefix + '.txt';
   if(r.status!==0 || !fs.existsSync(txtFile)){
-    throw new Error('local_whisper_failed: ' + (r.stderr||r.stdout||('exit_'+r.status)).slice(0,1200));
+    const detail=(r.error ? String(r.error.message||r.error)+' | ' : '') + (r.signal ? 'signal_'+r.signal+' | ' : '') + (r.stderr||r.stdout||('exit_'+r.status));
+    throw new Error('local_whisper_failed: exe=' + exe + ' model=' + model + ' wav=' + wav + ' detail=' + detail.slice(0,1200));
   }
   return fs.readFileSync(txtFile,'utf8').trim();
 }
