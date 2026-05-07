@@ -94,6 +94,21 @@ function mediaDurationSeconds(file){
   if(String(file).toLowerCase().endsWith('.mp3')) return mp3DurationFallback(file);
   return 0;
 }
+
+function localWhisperTranscribe(file, opts={}){
+  const exe=String(opts.whisperExe||'').trim() || 'whisper-cli';
+  const model=String(opts.whisperModel||'').trim();
+  if(!model) throw new Error('missing_whisper_model');
+  const prefix=path.join(OUT, 'whisper-' + Date.now());
+  const args=['-m', model, '-f', file, '-otxt', '-of', prefix, '-l', 'auto', '-tr'];
+  const r=spawnSync(exe, args, { encoding:'utf8', windowsHide:true, timeout: 30*60*1000 });
+  const txtFile=prefix + '.txt';
+  if(r.status!==0 || !fs.existsSync(txtFile)){
+    throw new Error('local_whisper_failed: ' + (r.stderr||r.stdout||('exit_'+r.status)).slice(0,1200));
+  }
+  return fs.readFileSync(txtFile,'utf8').trim();
+}
+
 function promptCountFromDuration(file, seconds){
   const duration=mediaDurationSeconds(file);
   const cut=Math.max(1, Number(seconds||8)||8);
@@ -173,16 +188,23 @@ ipcMain.handle('audio:process', async(_e,p={})=>{
       chunks=[p.audioFile];
     }
     const transcripts=[];
-    try{
-      const data=fs.readFileSync(p.audioFile).toString('base64');
-      const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(p.audioFile),data}}, {text:'Transcribe and translate this full audio file into clean English text. The audio may be in any language. Preserve meaning, names, numbers, tone, and scene order. Return clean translated text only.'}], 'You are a multilingual speech transcription and translation system. Transcribe the audio and translate it to English faithfully. Return only the translated transcript, no explanations.', false, 0);
+    const mode=String(p.transcriptionMode||'gemini');
+    if(mode==='localWhisper'){
+      const t=localWhisperTranscribe(p.audioFile, p);
       transcripts.push(t);
-    }catch(fullErr){
-      splitWarning = splitWarning ? splitWarning + ' | full_audio_transcribe_failed: ' + String(fullErr.message||fullErr) : 'full_audio_transcribe_failed: ' + String(fullErr.message||fullErr);
-      for(let i=0;i<chunks.length;i++){
-        const data=fs.readFileSync(chunks[i]).toString('base64');
-        const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(chunks[i]),data}}, {text:`Transcribe and translate this audio chunk ${i+1}/${chunks.length} into clean English text. Preserve meaning and scene order. Return clean translated text only.`}], 'You are a multilingual speech transcription and translation system. Transcribe the audio and translate it to English faithfully. Return only the translated transcript, no explanations.', false, i);
+      splitWarning = splitWarning ? splitWarning + ' | local_whisper_used' : 'local_whisper_used';
+    }else{
+      try{
+        const data=fs.readFileSync(p.audioFile).toString('base64');
+        const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(p.audioFile),data}}, {text:'Transcribe and translate this full audio file into clean English text. The audio may be in any language. Preserve meaning, names, numbers, tone, and scene order. Return clean translated text only.'}], 'You are a multilingual speech transcription and translation system. Transcribe the audio and translate it to English faithfully. Return only the translated transcript, no explanations.', false, 0);
         transcripts.push(t);
+      }catch(fullErr){
+        splitWarning = splitWarning ? splitWarning + ' | full_audio_transcribe_failed: ' + String(fullErr.message||fullErr) : 'full_audio_transcribe_failed: ' + String(fullErr.message||fullErr);
+        for(let i=0;i<chunks.length;i++){
+          const data=fs.readFileSync(chunks[i]).toString('base64');
+          const t=await gemini(p.apiKeys||p.apiKey, [{inlineData:{mimeType:mime(chunks[i]),data}}, {text:`Transcribe and translate this audio chunk ${i+1}/${chunks.length} into clean English text. Preserve meaning and scene order. Return clean translated text only.`}], 'You are a multilingual speech transcription and translation system. Transcribe the audio and translate it to English faithfully. Return only the translated transcript, no explanations.', false, i);
+          transcripts.push(t);
+        }
       }
     }
     const raw=transcripts.join('\n');

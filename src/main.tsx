@@ -25,6 +25,9 @@ function App() {
   const [apiKey, setApiKey] = useState('');
   const [styleJson, setStyleJson] = useState('');
   const [audioFile, setAudioFile] = useState('');
+  const [transcriptionMode, setTranscriptionMode] = useState('localWhisper');
+  const [whisperExe, setWhisperExe] = useState('');
+  const [whisperModel, setWhisperModel] = useState('');
   const [chunkSeconds, setChunkSeconds] = useState('8');
   const [targetPromptCount, setTargetPromptCount] = useState('');
   const [originalText, setOriginalText] = useState('');
@@ -39,6 +42,9 @@ function App() {
     api().loadConfig().then((c: any) => {
       setApiKey(c.apiKeys || c.apiKey || '');
       setStyleJson(c.styleJson || '');
+      setTranscriptionMode(c.transcriptionMode || 'localWhisper');
+      setWhisperExe(c.whisperExe || '');
+      setWhisperModel(c.whisperModel || '');
     });
   }, []);
 
@@ -59,8 +65,18 @@ function App() {
     }
   }
 
+  async function pickWhisperExe() {
+    const r = await api().openFile({ properties: ['openFile'], filters: [{ name: 'Whisper CLI', extensions: ['exe', '*'] }] });
+    if (r?.[0]) setWhisperExe(r[0]);
+  }
+
+  async function pickWhisperModel() {
+    const r = await api().openFile({ properties: ['openFile'], filters: [{ name: 'Whisper model', extensions: ['bin'] }] });
+    if (r?.[0]) setWhisperModel(r[0]);
+  }
+
   async function save() {
-    await api().saveConfig({ apiKeys: apiKey, styleJson });
+    await api().saveConfig({ apiKeys: apiKey, styleJson, transcriptionMode, whisperExe, whisperModel });
     setStatus('Đã lưu cấu hình');
   }
 
@@ -78,6 +94,9 @@ function App() {
       apiKeys: apiKey,
       styleJson,
       audioFile,
+      transcriptionMode,
+      whisperExe,
+      whisperModel,
       chunkSeconds,
       targetPromptCount,
       originalText,
@@ -109,6 +128,18 @@ function App() {
             <Field label="Gemini API keys">
               <textarea className="smallarea" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Mỗi dòng một API key" />
             </Field>
+            <Field label="Chế độ dịch audio">
+              <select value={transcriptionMode} onChange={e => setTranscriptionMode(e.target.value)}>
+                <option value="localWhisper">Local Whisper - ít tốn quota</option>
+                <option value="gemini">Gemini Audio - nhanh nhưng tốn quota</option>
+              </select>
+            </Field>
+            <Field label="Whisper CLI exe">
+              <input value={whisperExe} onChange={e => setWhisperExe(e.target.value)} placeholder="whisper-cli hoặc đường dẫn whisper-cli.exe" />
+            </Field>
+            <Field label="Whisper model .bin">
+              <input value={whisperModel} onChange={e => setWhisperModel(e.target.value)} placeholder="ggml-medium.bin / ggml-large-v3.bin" />
+            </Field>
             <Field label="Cắt audio mỗi giây">
               <input value={chunkSeconds} onChange={async e => { const v = onlyDigits(e.target.value); setChunkSeconds(v); await refreshInfo(audioFile, v); }} />
             </Field>
@@ -127,7 +158,9 @@ function App() {
             </Field>
           </div>
           <button className="soft" onClick={pickAudio}><Upload size={16}/> Tải audio mp3 lên</button>
-          <p className="hint">Audio: {audioFile || 'chưa chọn'}<br/>Thời lượng: {autoInfo?.durationSeconds ? Math.round(autoInfo.durationSeconds) + 's' : 'chưa phân tích'} • Số prompt tự động: {autoInfo?.promptCount || 'chưa có'}</p>
+          <button className="soft" onClick={pickWhisperExe}>Chọn whisper-cli.exe</button>
+          <button className="soft" onClick={pickWhisperModel}>Chọn model .bin</button>
+          <p className="hint">Audio: {audioFile || 'chưa chọn'}<br/>Whisper CLI: {whisperExe || 'mặc định whisper-cli'}<br/>Whisper model: {whisperModel || 'chưa chọn'}<br/>Thời lượng: {autoInfo?.durationSeconds ? Math.round(autoInfo.durationSeconds) + 's' : 'chưa phân tích'} • Số prompt tự động: {autoInfo?.promptCount || 'chưa có'}</p>
         </section>
         <section className="card"><h2>Phong cách JSON</h2><textarea value={styleJson} onChange={e => setStyleJson(e.target.value)} placeholder="Dán style_analysis JSON ở đây" /></section>
         <section className="card"><h2>Văn bản gốc</h2><textarea value={originalText} onChange={e => setOriginalText(e.target.value)} placeholder="Dán văn bản gốc để AI so sánh transcript và chỉnh cho chính xác" /></section>
