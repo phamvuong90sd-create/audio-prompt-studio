@@ -125,10 +125,13 @@ function findWhisperModel(){
   throw new Error('missing_bundled_whisper_model');
 }
 function prepareWhisperWav(file){
+  if(String(file).toLowerCase().endsWith('.wav')) return file;
   const wav=path.join(OUT, 'whisper-input-' + Date.now() + '.wav');
-  const r=runFfmpeg(['-y','-i',file,'-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',wav]);
+  const ff=ffmpegBin();
+  const r=spawnSync(ff, ['-y','-hide_banner','-i',file,'-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',wav], { encoding:'utf8', windowsHide:true, timeout: 20*60*1000 });
   if(r.status!==0 || !fs.existsSync(wav)){
-    throw new Error('whisper_wav_convert_failed: ' + (r.stderr||r.stdout||('exit_'+r.status)).slice(0,1200));
+    const detail=(r.error ? String(r.error.message||r.error)+' | ' : '') + (r.signal ? 'signal_'+r.signal+' | ' : '') + (r.stderr||r.stdout||('exit_'+r.status));
+    throw new Error('whisper_wav_convert_failed: ffmpeg=' + ff + ' input=' + file + ' output=' + wav + ' detail=' + detail.slice(0,1500));
   }
   return wav;
 }
