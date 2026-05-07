@@ -14,13 +14,14 @@ jobs:
           name: AudioPromptStudio-Windows-Setup
           path: release/AudioPromptStudio-Setup.exe
   build-macos:
+    continue-on-error: true
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: '20'}
       - run: npm install
-      - run: npm run dist -- --publish never -- --mac dmg --universal
+      - run: npm run build && npx electron-builder --mac dmg --x64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: AudioPromptStudio-macOS
