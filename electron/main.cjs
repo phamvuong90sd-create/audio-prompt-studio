@@ -134,7 +134,7 @@ function objectToPromptText(x){
   }
   return parts.join(' | ');
 }
-function cleanPromptText(t){ return String(t||'').replace(/[{}]/g,'').replace(/\s+/g,' ').trim(); }
+function cleanPromptText(t){ return String(t||'').replace(/[{}\\/]/g,'').replace(/\s+/g,' ').trim(); }
 function normalizePromptArray(parsed){
   let arr=[];
   if (Array.isArray(parsed)) arr=parsed.map(objectToPromptText);
