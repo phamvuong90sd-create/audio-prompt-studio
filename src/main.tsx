@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Upload, Play, Save } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import './style.css';
 
 declare global { interface Window { studioAPI: any } }
@@ -99,30 +99,48 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app compact">
       <aside>
         <h1>Audio Prompt Studio</h1>
-        <p>Tool riêng tạo prompt từ audio + văn bản gốc</p>
-        <button onClick={save}><Save size={16}/> Lưu cấu hình</button>
-        <button onClick={run}><Play size={16}/> Tạo prompt</button>
+        <p>Audio + văn bản gốc → prompt tiếng Anh</p>
+        <button onClick={run}>Tạo prompt</button>
+        <button className="soft" onClick={save}>Lưu</button>
       </aside>
       <main>
-        <section className="card">
+        <section className="card top-card">
+          <div className="section-head"><h2>Nội dung đầu vào</h2><button className="soft smallbtn" onClick={pickAudio}><Upload size={14}/> Chọn audio</button></div>
+          <div className="input-pair">
+            <div className="audio-box">
+              <h3>Audio</h3>
+              <p className="hint pathline">{audioFile || 'Chưa chọn audio mp3/wav/m4a'}</p>
+              <p className="hint">Thời lượng: {autoInfo?.durationSeconds ? Math.round(autoInfo.durationSeconds) + 's' : 'chưa phân tích'} • Số prompt: {autoInfo?.promptCount || 'chưa có'}</p>
+              <div className="mini-grid">
+                <Field label="Cắt mỗi giây">
+                  <input value={chunkSeconds} onChange={async e => { const v = onlyDigits(e.target.value); setChunkSeconds(v); await refreshInfo(audioFile, v); }} />
+                </Field>
+                <Field label="Số prompt tự động">
+                  <input readOnly value={targetPromptCount || (autoInfo?.promptCount ? String(autoInfo.promptCount) : '')} placeholder="Tự tính" />
+                </Field>
+                <Field label="Dịch audio">
+                  <select value={transcriptionMode} onChange={e => setTranscriptionMode(e.target.value)}>
+                    <option value="localWhisper">Local Whisper nhanh</option>
+                    <option value="gemini">Gemini Audio</option>
+                  </select>
+                </Field>
+              </div>
+            </div>
+            <div className="text-box">
+              <h3>Văn bản gốc</h3>
+              <textarea value={originalText} onChange={e => setOriginalText(e.target.value)} placeholder="Dán văn bản gốc để AI đối chiếu với transcript audio và giữ đúng nội dung" />
+            </div>
+          </div>
+        </section>
+
+        <section className="card settings-card">
           <h2>Thiết lập</h2>
-          <div className="grid">
+          <div className="grid compact-grid">
             <Field label="Gemini API keys">
               <textarea className="smallarea" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Mỗi dòng một API key" />
-            </Field>
-            <Field label="Chế độ dịch audio">
-              <select value={transcriptionMode} onChange={e => setTranscriptionMode(e.target.value)}>
-                <option value="localWhisper">Local Whisper nhanh - ít tốn quota</option>
-                <option value="gemini">Gemini Audio - nhanh nhưng tốn quota</option>
-              </select>
-            </Field>            <Field label="Cắt audio mỗi giây">
-              <input value={chunkSeconds} onChange={async e => { const v = onlyDigits(e.target.value); setChunkSeconds(v); await refreshInfo(audioFile, v); }} />
-            </Field>
-            <Field label="Số prompt tự động">
-              <input readOnly value={targetPromptCount || (autoInfo?.promptCount ? String(autoInfo.promptCount) : '')} placeholder="Tự tính theo thời lượng / giây cắt" />
             </Field>
             <Field label="Lời thoại">
               <select value={dialog ? 'yes' : 'no'} onChange={e => setDialog(e.target.value === 'yes')}>
@@ -135,13 +153,11 @@ function App() {
               </select>
             </Field>
           </div>
-          <button className="soft" onClick={pickAudio}><Upload size={16}/> Tải audio mp3 lên</button>
-          <p className="hint">Audio: {audioFile || 'chưa chọn'}<br/>Thời lượng: {autoInfo?.durationSeconds ? Math.round(autoInfo.durationSeconds) + 's' : 'chưa phân tích'} • Số prompt tự động: {autoInfo?.promptCount || 'chưa có'}</p>
         </section>
-        <section className="card"><h2>Phong cách JSON</h2><textarea value={styleJson} onChange={e => setStyleJson(e.target.value)} placeholder="Dán style_analysis JSON ở đây" /></section>
-        <section className="card"><h2>Văn bản gốc</h2><textarea value={originalText} onChange={e => setOriginalText(e.target.value)} placeholder="Dán văn bản gốc để AI so sánh transcript và chỉnh cho chính xác" /></section>
-        <section className="card"><h2>Yêu cầu thêm vào prompt</h2><textarea value={extraRequirement} onChange={e => setExtraRequirement(e.target.value)} placeholder="Ví dụ: prompt ngắn gọn, phong cách điện ảnh, giữ nhân vật đồng nhất, không có chữ trên màn hình..." /></section>
+
+        <section className="card"><h2>Phong cách JSON</h2><textarea className="mediumarea" value={styleJson} onChange={e => setStyleJson(e.target.value)} placeholder="Dán style_analysis JSON ở đây" /></section>
         <section className="card"><h2>Kết quả</h2><p>{status}</p><pre>{JSON.stringify(result, null, 2)}</pre></section>
+        <section className="card extra-card"><h2>Yêu cầu thêm vào prompt</h2><textarea className="mediumarea" value={extraRequirement} onChange={e => setExtraRequirement(e.target.value)} placeholder="Ví dụ: prompt ngắn gọn, phong cách điện ảnh, giữ nhân vật đồng nhất, không có chữ trên màn hình..." /></section>
       </main>
     </div>
   );
