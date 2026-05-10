@@ -120,49 +120,26 @@ function App() {
   }
 
   return (
-    <div className="app compact">
-      <aside>
-        <h1>Audio Prompt Studio</h1>
-        <p>Audio + văn bản gốc → prompt tiếng Anh</p>
-        <button onClick={run}>Tạo prompt</button>
-        <button className="soft" onClick={save}>Lưu</button>
-      </aside>
-      <main>
-        <section className="card top-card">
-          <div className="section-head"><h2>Nội dung đầu vào</h2><button className="soft smallbtn" onClick={pickAudio}><Upload size={14}/> Chọn audio</button></div>
-          <div className="input-pair">
-            <div className="audio-box">
-              <h3>Audio</h3>
-              <p className="hint pathline">{audioFile || 'Chưa chọn audio mp3/wav/m4a'}</p>
-              <p className="hint">Thời lượng: {autoInfo?.durationSeconds ? Math.round(autoInfo.durationSeconds) + 's' : 'chưa phân tích'} • Số prompt: {autoInfo?.promptCount || 'chưa có'}</p>
-              <div className="mini-grid">
-                <Field label="Cắt mỗi giây">
-                  <input value={chunkSeconds} onChange={async e => { const v = onlyDigits(e.target.value); setChunkSeconds(v); await refreshInfo(audioFile, v); }} />
-                </Field>
-                <Field label="Số prompt tự động">
-                  <input readOnly value={targetPromptCount || (autoInfo?.promptCount ? String(autoInfo.promptCount) : '')} placeholder="Tự tính" />
-                </Field>
-                <Field label="Dịch audio">
-                  <select value={transcriptionMode} onChange={e => setTranscriptionMode(e.target.value)}>
-                    <option value="localWhisper">Local Whisper nhanh</option>
-                    <option value="gemini">Gemini Audio</option>
-                  </select>
-                </Field>
-              </div>
-            </div>
-            <div className="text-box">
-              <h3>Văn bản gốc</h3>
-              <textarea value={originalText} onChange={e => setOriginalText(e.target.value)} placeholder="Dán văn bản gốc để AI đối chiếu với transcript audio và giữ đúng nội dung" />
-            </div>
-          </div>
-        </section>
-
-        <section className="card settings-card">
-          <h2>Thiết lập</h2>
-          <div className="grid compact-grid">
-            <Field label="Gemini API keys">
-              <textarea className="smallarea" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Mỗi dòng một API key" />
-            </Field>
+    <div className="app modern">
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <h1>Audio Prompt Studio</h1>
+          <p>Dịch Audio & Tạo Prompt AI</p>
+        </div>
+        
+        <div className="sidebar-content">
+          <Field label="Gemini API keys">
+            <textarea className="smallarea" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Mỗi dòng một API key" />
+          </Field>
+          
+          <Field label="Chế độ dịch">
+            <select value={transcriptionMode} onChange={e => setTranscriptionMode(e.target.value)}>
+              <option value="localWhisper">Local Whisper nhanh</option>
+              <option value="gemini">Gemini Audio</option>
+            </select>
+          </Field>
+          
+          <div className="inline-fields">
             <Field label="Lời thoại">
               <select value={dialog ? 'yes' : 'no'} onChange={e => setDialog(e.target.value === 'yes')}>
                 <option value="no">Không</option><option value="yes">Có</option>
@@ -174,11 +151,60 @@ function App() {
               </select>
             </Field>
           </div>
-        </section>
 
-        <section className="card"><h2>Phong cách JSON</h2><textarea className="mediumarea" value={styleJson} onChange={e => setStyleJson(e.target.value)} placeholder="Dán style_analysis JSON ở đây" /></section>
-        <section className="card"><div className="section-head"><h2>Kết quả</h2><div className="result-actions"><button className="soft smallbtn" onClick={copyPrompts}><Copy size={14}/> Copy prompt</button><button className="soft smallbtn" onClick={downloadTxt}><Download size={14}/> Tải TXT</button></div></div><p>{status}</p><pre>{promptText() || JSON.stringify(result, null, 2)}</pre></section>
-        <section className="card extra-card"><h2>Yêu cầu thêm vào prompt</h2><textarea className="mediumarea" value={extraRequirement} onChange={e => setExtraRequirement(e.target.value)} placeholder="Ví dụ: prompt ngắn gọn, phong cách điện ảnh, giữ nhân vật đồng nhất, không có chữ trên màn hình..." /></section>
+          <Field label="Phong cách JSON">
+            <textarea className="mediumarea" value={styleJson} onChange={e => setStyleJson(e.target.value)} placeholder="Dán style_analysis JSON..." />
+          </Field>
+
+          <Field label="Yêu cầu thêm">
+            <textarea className="mediumarea" value={extraRequirement} onChange={e => setExtraRequirement(e.target.value)} placeholder="Ví dụ: điện ảnh, không chữ..." />
+          </Field>
+        </div>
+
+        <div className="sidebar-footer">
+          <button className="primary-btn" onClick={run}>✨ Bắt đầu tạo prompt</button>
+          <button className="soft-btn" onClick={save}>💾 Lưu cấu hình</button>
+        </div>
+      </aside>
+
+      <main className="main-content">
+        <div className="main-grid">
+          <section className="card audio-card">
+            <div className="card-header">
+              <h2><Upload size={16}/> Audio đầu vào</h2>
+              <button className="action-btn" onClick={pickAudio}>Chọn file</button>
+            </div>
+            <div className="audio-info">
+              <p className="file-path">{audioFile || 'Chưa có file audio...'}</p>
+              <div className="info-badges">
+                <span className="badge">⏱️ {autoInfo?.durationSeconds ? Math.round(autoInfo.durationSeconds) + 's' : '--'}</span>
+                <span className="badge">📋 {targetPromptCount || (autoInfo?.promptCount ? String(autoInfo.promptCount) : '--')} prompt</span>
+                <div className="badge-input">
+                  <span>Cắt:</span>
+                  <input value={chunkSeconds} onChange={async e => { const v = onlyDigits(e.target.value); setChunkSeconds(v); await refreshInfo(audioFile, v); }} />
+                  <span>s</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="card text-card">
+            <div className="card-header"><h2>📝 Văn bản gốc</h2></div>
+            <textarea value={originalText} onChange={e => setOriginalText(e.target.value)} placeholder="Dán văn bản gốc ở đây để AI bám sát nội dung..." />
+          </section>
+
+          <section className="card result-card">
+            <div className="card-header">
+              <h2>🚀 Kết quả prompt</h2>
+              <div className="header-actions">
+                <button className="icon-btn" onClick={copyPrompts} title="Copy"><Copy size={16}/></button>
+                <button className="icon-btn" onClick={downloadTxt} title="Tải về"><Download size={16}/></button>
+              </div>
+            </div>
+            <div className="status-bar">{status}</div>
+            <pre className="result-display">{promptText() || 'Chưa có kết quả...'}</pre>
+          </section>
+        </div>
       </main>
     </div>
   );
