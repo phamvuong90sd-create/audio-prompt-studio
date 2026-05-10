@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Copy, Download, Upload } from 'lucide-react';
+import { Copy, Download, FileText, Upload } from 'lucide-react';
 import './style.css';
 
 declare global { interface Window { studioAPI: any } }
@@ -12,6 +12,7 @@ const api = () => window.studioAPI || {
   saveConfig: async () => ({}),
   loadConfig: async () => ({}),
   saveText: async () => ({ ok:false, error:'api_not_ready' }),
+  readText: async () => ({ ok:false, error:'api_not_ready' }),
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -49,6 +50,22 @@ function App() {
     if (!file) return;
     const info = await api().info({ file, chunkSeconds: seconds });
     if (info?.ok) { setAutoInfo(info); if (info.promptCount) setTargetPromptCount(String(info.promptCount)); }
+  }
+
+  async function loadOriginalTxt() {
+    const r = await api().openFile({
+      properties: ['openFile'],
+      filters: [{ name: 'Text', extensions: ['txt'] }],
+    });
+    if (r?.[0]) {
+      const loaded = await api().readText({ filePath: r[0] });
+      if (loaded?.ok) {
+        setOriginalText(loaded.text || '');
+        setStatus(`Đã tải văn bản gốc: ${loaded.filePath}`);
+      } else {
+        setStatus(`Lỗi tải TXT: ${loaded?.error || 'unknown_error'}`);
+      }
+    }
   }
 
   async function pickAudio() {
@@ -189,7 +206,7 @@ function App() {
           </section>
 
           <section className="card text-card">
-            <div className="card-header"><h2>📝 Văn bản gốc</h2></div>
+            <div className="card-header"><h2>📝 Văn bản gốc</h2><button className="action-btn" onClick={loadOriginalTxt}><FileText size={14}/> Tải TXT</button></div>
             <textarea value={originalText} onChange={e => setOriginalText(e.target.value)} placeholder="Dán văn bản gốc ở đây để AI bám sát nội dung..." />
           </section>
 

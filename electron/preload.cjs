@@ -5,5 +5,6 @@ contextBridge.exposeInMainWorld('studioAPI', {
   info: (payload) => ipcRenderer.invoke('audio:info', payload),
   saveConfig: (payload) => ipcRenderer.invoke('config:save', payload),
   loadConfig: () => ipcRenderer.invoke('config:load'),
-  saveText: (payload) => ipcRenderer.invoke('dialog:saveText', payload)
+  saveText: (payload) => ipcRenderer.invoke('dialog:saveText', payload),
+  readText: (payload) => ipcRenderer.invoke('dialog:readText', payload)
 });

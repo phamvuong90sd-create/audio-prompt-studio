@@ -27,6 +27,14 @@ ipcMain.handle('dialog:saveText', async (_e, p={}) => {
   fs.writeFileSync(r.filePath, String(p.text||''), 'utf8');
   return {ok:true,filePath:r.filePath};
 });
+ipcMain.handle('dialog:readText', async (_e, p={}) => {
+  try {
+    if(!p.filePath) return {ok:false,error:'missing_file'};
+    return {ok:true,text:fs.readFileSync(p.filePath,'utf8'),filePath:p.filePath};
+  } catch(e) {
+    return {ok:false,error:String(e.message||e)};
+  }
+});
 ipcMain.handle('config:load', async()=>{ try { return { ok:true, ...JSON.parse(fs.readFileSync(CFG,'utf8')) }; } catch { return { ok:true }; } });
 ipcMain.handle('config:save', async(_e,p)=>{ ensure(); fs.writeFileSync(CFG, JSON.stringify(p||{}, null, 2)); return { ok:true }; });
 function ffmpegBin(){
