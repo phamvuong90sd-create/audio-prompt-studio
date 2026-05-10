@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Upload } from 'lucide-react';
+import { Copy, Download, Upload } from 'lucide-react';
 import './style.css';
 
 declare global { interface Window { studioAPI: any } }
@@ -11,6 +11,7 @@ const api = () => window.studioAPI || {
   info: async () => ({ ok:false, error:'api_not_ready' }),
   saveConfig: async () => ({}),
   loadConfig: async () => ({}),
+  saveText: async () => ({ ok:false, error:'api_not_ready' }),
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -65,6 +66,26 @@ function App() {
   async function save() {
     await api().saveConfig({ apiKeys: apiKey, styleJson, transcriptionMode });
     setStatus('Đã lưu cấu hình');
+  }
+
+
+  function promptText() {
+    if (!Array.isArray(result) || !result.length) return '';
+    return result.map((x: any, i: number) => typeof x === 'string' ? x : (x?.prompt || x?.text || JSON.stringify(x))).join('\n\n');
+  }
+
+  async function copyPrompts() {
+    const text = promptText();
+    if (!text) { setStatus('Chưa có prompt để copy'); return; }
+    await navigator.clipboard.writeText(text);
+    setStatus(`Đã copy ${result.length} prompt`);
+  }
+
+  async function downloadTxt() {
+    const text = promptText();
+    if (!text) { setStatus('Chưa có prompt để tải'); return; }
+    const r = await api().saveText({ defaultPath: `audio-prompts-${Date.now()}.txt`, text });
+    setStatus(r?.ok ? `Đã lưu TXT: ${r.filePath}` : 'Đã huỷ lưu TXT');
   }
 
   async function run() {
@@ -156,7 +177,7 @@ function App() {
         </section>
 
         <section className="card"><h2>Phong cách JSON</h2><textarea className="mediumarea" value={styleJson} onChange={e => setStyleJson(e.target.value)} placeholder="Dán style_analysis JSON ở đây" /></section>
-        <section className="card"><h2>Kết quả</h2><p>{status}</p><pre>{JSON.stringify(result, null, 2)}</pre></section>
+        <section className="card"><div className="section-head"><h2>Kết quả</h2><div className="result-actions"><button className="soft smallbtn" onClick={copyPrompts}><Copy size={14}/> Copy prompt</button><button className="soft smallbtn" onClick={downloadTxt}><Download size={14}/> Tải TXT</button></div></div><p>{status}</p><pre>{promptText() || JSON.stringify(result, null, 2)}</pre></section>
         <section className="card extra-card"><h2>Yêu cầu thêm vào prompt</h2><textarea className="mediumarea" value={extraRequirement} onChange={e => setExtraRequirement(e.target.value)} placeholder="Ví dụ: prompt ngắn gọn, phong cách điện ảnh, giữ nhân vật đồng nhất, không có chữ trên màn hình..." /></section>
       </main>
     </div>

@@ -21,6 +21,12 @@ ipcMain.handle('dialog:openFile', async (_e, opts={}) => {
   const r = await dialog.showOpenDialog({ properties: opts.properties || ['openFile'], filters: opts.filters || [] });
   return r.canceled ? [] : r.filePaths;
 });
+ipcMain.handle('dialog:saveText', async (_e, p={}) => {
+  const r = await dialog.showSaveDialog({ title:p.title||'Lưu prompt TXT', defaultPath:p.defaultPath||'audio-prompts.txt', filters:[{name:'Text',extensions:['txt']} ] });
+  if(r.canceled || !r.filePath) return {ok:false,canceled:true};
+  fs.writeFileSync(r.filePath, String(p.text||''), 'utf8');
+  return {ok:true,filePath:r.filePath};
+});
 ipcMain.handle('config:load', async()=>{ try { return { ok:true, ...JSON.parse(fs.readFileSync(CFG,'utf8')) }; } catch { return { ok:true }; } });
 ipcMain.handle('config:save', async(_e,p)=>{ ensure(); fs.writeFileSync(CFG, JSON.stringify(p||{}, null, 2)); return { ok:true }; });
 function ffmpegBin(){
